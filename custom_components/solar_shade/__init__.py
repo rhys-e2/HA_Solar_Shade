@@ -228,7 +228,14 @@ async def _try_download(
     dsm_gap_fill: bool = False, dsm_provider: str = "auto",
 ) -> SiteModel | None:
     """Try to auto-download DSM from the configured elevation provider."""
-    from .elevation_provider import detect_provider, get_provider
+    from .elevation_provider import (
+        async_load_providers,
+        detect_provider,
+        get_provider,
+    )
+
+    # Provider modules are imported lazily; do it off the event loop.
+    await async_load_providers(hass)
 
     # Resolve provider
     if dsm_provider == DSM_PROVIDER_AUTO:

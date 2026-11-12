@@ -15,6 +15,7 @@ Supported providers:
 from __future__ import annotations
 
 import logging
+import threading
 from abc import ABC, abstractmethod
 
 import aiohttp
@@ -153,6 +154,9 @@ def detect_provider(country: str | None) -> str:
 
 
 _PROVIDERS_LOADED = False
+# Re-entrant, and held for the whole load: when the load runs in an executor
+# thread, a second caller must wait for it rather than see a half-built registry.
+_PROVIDERS_LOCK = threading.RLock()
 
 
 def _ensure_providers_loaded():
@@ -160,25 +164,45 @@ def _ensure_providers_loaded():
 
     Scans for *_provider.py files in this package directory so that adding
     a new provider doesn't require editing this function.
+
+    This performs blocking imports.  Code running on the event loop must use
+    :func:`async_load_providers` first (after which this is a cheap no-op).
     """
     global _PROVIDERS_LOADED
     if _PROVIDERS_LOADED:
         return
-    _PROVIDERS_LOADED = True
+    with _PROVIDERS_LOCK:
+        if _PROVIDERS_LOADED:
+            return
 
-    import importlib
-    import pathlib
+        import importlib
+        import pathlib
 
-    pkg_dir = pathlib.Path(__file__).parent
-    for mod_path in sorted(pkg_dir.glob("*_provider.py")):
-        module_name = mod_path.stem
+        pkg_dir = pathlib.Path(__file__).parent
+        for mod_path in sorted(pkg_dir.glob("*_provider.py")):
+            module_name = mod_path.stem
+            try:
+                importlib.import_module(f".{module_name}", __package__)
+            except (ImportError, ModuleNotFoundError):
+                _LOGGER.debug("Could not load provider module %s", module_name)
+
+        # Also load USGSProvider from usgs_downloader
         try:
-            importlib.import_module(f".{module_name}", __package__)
+            from . import usgs_downloader  # noqa: F401
         except (ImportError, ModuleNotFoundError):
-            _LOGGER.debug("Could not load provider module %s", module_name)
+            pass
 
-    # Also load USGSProvider from usgs_downloader
-    try:
-        from . import usgs_downloader  # noqa: F401
-    except (ImportError, ModuleNotFoundError):
-        pass
+        # Only mark loaded once the registry is complete.
+        _PROVIDERS_LOADED = True
+
+
+async def async_load_providers(hass) -> None:
+    """Load the provider modules without blocking the event loop.
+
+    Importing modules is blocking I/O, which Home Assistant flags when done on
+    the loop ("Detected blocking call to import_module").  Await this before
+    calling get_provider(), detect_provider() or list_providers() from async
+    code.
+    """
+    if not _PROVIDERS_LOADED:
+        await hass.async_add_executor_job(_ensure_providers_loaded)
