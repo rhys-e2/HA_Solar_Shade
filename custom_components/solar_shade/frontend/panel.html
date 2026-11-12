@@ -4,8 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Solar Shade</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
+        integrity="sha384-NZLkVuBRMEeB4VeZz27WwTRvlhec30biQ8Xx7zG7JJnkvEKRg5qi6BNbEXo9ydwv" crossorigin="anonymous" />
   <style>
     /* Shrink Leaflet.Draw edit handles and guide lines */
     .leaflet-editing-icon {
@@ -301,8 +303,10 @@
 
 <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar">&#9776;</button>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"
+        integrity="sha384-JP5UPxIO2Tm2o79Fb0tGYMa44jkWar53aBoCbd8ah0+LcCDoohTIYr+zIXyfGIJN" crossorigin="anonymous"></script>
 <script>
 (function() {
   // ── Sidebar Toggle (mobile) ────────────────────────────────────────
@@ -579,7 +583,7 @@
             const color = s > 0.6 ? '#1565c0' : s > 0.3 ? '#ff9800' : s > 0 ? '#ffc107' : '#e0e0e0';
             const isNow = parseInt(timelineData.hours[i]) === currentHour;
             const border = isNow ? 'border:1px solid var(--primary-text-color,#333);' : '';
-            return `<div title="${timelineData.hours[i]}: ${(s*100).toFixed(0)}%" style="flex:1;height:${h}px;background:${color};border-radius:1px;${border}"></div>`;
+            return `<div title="${escapeAttr(timelineData.hours[i])}: ${(s*100).toFixed(0)}%" style="flex:1;height:${h}px;background:${color};border-radius:1px;${border}"></div>`;
           }).join('');
           const avgPct = (tz.avg_shade * 100).toFixed(0);
           sparklineHtml = `<div style="margin-top:6px;">
@@ -601,25 +605,25 @@
       const spotHtml = (method === 'sunniest' || method === 'shadiest')
         ? `<div class="zone-spot" style="margin-top:4px;display:flex;align-items:center;gap:6px;">
             <span style="font-size:11px;color:var(--secondary-text-color,#999);">${method === 'sunniest' ? 'Sunniest' : 'Shadiest'} patch size:</span>
-            <input type="number" class="spot-area-input" data-zone-id="${z.id}" value="${spotArea}" min="0.25" max="100" step="0.25" title="Area of the patch used to size watering (m²)" style="width:64px;font-size:11px;padding:2px 4px;border-radius:4px;" />
+            <input type="number" class="spot-area-input" data-zone-id="${escapeAttr(z.id)}" value="${Number(spotArea) || 1}" min="0.25" max="100" step="0.25" title="Area of the patch used to size watering (m²)" style="width:64px;font-size:11px;padding:2px 4px;border-radius:4px;" />
             <span style="font-size:11px;color:var(--secondary-text-color,#999);">m²</span>
           </div>`
         : '';
       const methodHtml = `<div class="zone-method" style="margin-top:6px;display:flex;align-items:center;gap:6px;">
           <span style="font-size:11px;color:var(--secondary-text-color,#999);">Watering basis:</span>
-          <select class="shade-method-select" data-zone-id="${z.id}" title="How shade is aggregated across this zone for irrigation" style="flex:1;font-size:11px;padding:2px 4px;border-radius:4px;">
+          <select class="shade-method-select" data-zone-id="${escapeAttr(z.id)}" title="How shade is aggregated across this zone for irrigation" style="flex:1;font-size:11px;padding:2px 4px;border-radius:4px;">
             <option value="average"${method === 'average' ? ' selected' : ''}>Average</option>
             <option value="sunniest"${method === 'sunniest' ? ' selected' : ''}>Sunniest spot</option>
             <option value="shadiest"${method === 'shadiest' ? ' selected' : ''}>Shadiest spot</option>
           </select>
         </div>${spotHtml}`;
-      return `<div class="zone-item" data-zone-id="${z.id}" style="border-left: 4px solid ${z.color}; ${z.surface === 'dsm' ? 'border-left-style:dashed;' : ''}">
+      return `<div class="zone-item" data-zone-id="${escapeAttr(z.id)}" style="border-left: 4px solid ${safeColor(z.color) || '#999'}; ${z.surface === 'dsm' ? 'border-left-style:dashed;' : ''}">
         <div class="name">${z.is_point ? '📍 ' : ''}${escapeHtml(z.name)}</div>
         <div class="meta">${metaText}${surfaceLabel}</div>
         ${shadeHtml}
         ${sparklineHtml}
         ${methodHtml}
-        <button class="delete" data-zone-id="${z.id}" title="Delete zone">&times;</button>
+        <button class="delete" data-zone-id="${escapeAttr(z.id)}" title="Delete zone">&times;</button>
       </div>`;
     }).join('');
 
@@ -699,6 +703,24 @@
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  // escapeHtml() is only safe for text content: the textContent -> innerHTML
+  // round-trip does not escape quotes, so it must NOT be used inside an
+  // attribute value. Use escapeAttr() there.
+  function escapeAttr(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Zone colours reach style attributes, Leaflet and three.js. Accept plain
+  // hex colours only; anything else is treated as missing.
+  function safeColor(c) {
+    return (typeof c === 'string' && /^#[0-9a-f]{3,8}$/i.test(c)) ? c : null;
   }
 
   function computePolygonAreaSqM(coords) {
@@ -967,7 +989,7 @@
         // Color-match the patch to its zone; distinguish sunniest vs shadiest
         // by fill density and border style rather than hue.
         const zone = zones.find(z => z.id === p.id);
-        const color = (zone && zone.color) || '#999';
+        const color = (zone && safeColor(zone.color)) || '#999';
         const rect = L.rectangle(
           [[b.south, b.west], [b.north, b.east]],
           {
@@ -978,7 +1000,7 @@
             dashArray: sunny ? null : '4,3',
           }
         );
-        rect.bindTooltip(`${p.name}: ${sunny ? 'sunniest' : 'shadiest'} patch`, { direction: 'top' });
+        rect.bindTooltip(`${escapeHtml(p.name)}: ${sunny ? 'sunniest' : 'shadiest'} patch`, { direction: 'top' });
         patchLayer.addLayer(rect);
       });
       patchLayer.addTo(map);
@@ -1219,7 +1241,7 @@
           id: z.id,
           name: z.name,
           polygon: z.polygon,
-          color: z.color || ZONE_COLORS[i % ZONE_COLORS.length],
+          color: safeColor(z.color) || ZONE_COLORS[i % ZONE_COLORS.length],
           is_point: z.is_point || (z.polygon && z.polygon.length === 1),
           surface: z.surface || 'ground',
           shade_method: z.shade_method || 'average',
@@ -1421,6 +1443,9 @@
       interactive: false,
       className: 'eraser-mark',
     }).addTo(map);
+
+    // The server bounds the size of one request, so flush long drags in chunks.
+    if (eraserStrokes.length >= 1000) eraserFlushStrokes();
 
     // Debounce sending — wait for drag to finish or 300ms of inactivity
     clearTimeout(eraserSendTimeout);
@@ -1672,6 +1697,17 @@
         imports: {
           "three": "https://unpkg.com/three@0.183.2/build/three.module.js",
           "three/addons/": "https://unpkg.com/three@0.183.2/examples/jsm/"
+        },
+        // Subresource Integrity for module imports. Enforced by browsers that
+        // support import-map integrity; ignored (harmlessly) by those that
+        // do not. Recompute these if the three.js version above changes.
+        integrity: {
+          "https://unpkg.com/three@0.183.2/build/three.module.js":
+            "sha384-kdNOO53DEd2OvoLusDIw6hCXaxB/qGpJBHgz5k/qQLgjDAQUZ8IjCFCfuYzc/sfX",
+          "https://unpkg.com/three@0.183.2/build/three.core.js":
+            "sha384-T0d5qlOvyPT92JVj73IjXSVeqEuJIXH7hs2dZzcsSyRv/ugCdA1BDA07IZZ1QryO",
+          "https://unpkg.com/three@0.183.2/examples/jsm/controls/OrbitControls.js":
+            "sha384-qwbKZfqvfut7iKUj5OTm9S0ZtyKO8qwf6tgArWhWhvjzpRG9qEN88IL6J8gVOZOx"
         }
       });
       document.head.appendChild(importMap);

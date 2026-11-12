@@ -135,8 +135,11 @@ class TestProcessLidarWithEPSG:
         assert site.dsm.shape[1] > 5
         assert site.dtm is not None
         assert site.classification is not None
-        assert site.latitude == 59.33
-        assert site.longitude == 18.07
+        # The model is anchored at the file's centroid (see _centroid_latlon).
+        # This synthetic file is centred on the configured location, so the
+        # two agree to within projection rounding (~1e-4 deg is ~10 m).
+        assert site.latitude == pytest.approx(59.33, abs=1e-4)
+        assert site.longitude == pytest.approx(18.07, abs=1e-4)
         # Elevation should be near our ground_z
         assert 10.0 < float(np.nanmin(site.dsm)) < 30.0
 

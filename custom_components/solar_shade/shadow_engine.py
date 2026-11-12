@@ -182,6 +182,68 @@ def find_lidar_files(data_dir: str) -> list[str]:
     return sorted(files)
 
 
+# A manual file whose centroid is further than this from the configured
+# location is almost certainly in a different CRS than was detected/assumed.
+_MAX_ANCHOR_DISTANCE_KM = 100.0
+
+
+def _centroid_latlon(
+    center_e: float,
+    center_n: float,
+    native_epsg: int,
+    ref_lat: float,
+    ref_lon: float,
+) -> tuple[float, float]:
+    """Return the lat/lon of a manual file's centroid.
+
+    The site model anchors its grid at ``SiteModel.latitude/longitude``: the
+    overlay bounds, the satellite request and the lat/lng -> pixel mapping
+    used for zones all offset from that point.  A manual file is rasterized
+    around its *own* centroid, so that is the point the model must be
+    anchored to.  Anchoring at the configured home location instead shifts
+    the whole height map by the distance between home and the file centre.
+
+    Falls back to the reference location (the previous behaviour) if the
+    centroid cannot be projected or is implausibly far from it, so a wrong CRS
+    cannot also corrupt the sun-position inputs.
+    """
+    from pyproj.exceptions import CRSError
+
+    from .geo import epsg_to_latlon
+
+    if native_epsg:
+        epsg = native_epsg
+    else:
+        # Unknown CRS: raw coordinates are assumed to be UTM (WGS84) for the
+        # configured location, matching _site_bounds_latlng / _latlng_to_pixel.
+        zone = int((ref_lon + 180) / 6) + 1
+        epsg = (32600 + zone) if ref_lat >= 0 else (32700 + zone)
+
+    try:
+        lat, lon = epsg_to_latlon(center_e, center_n, epsg)
+    except CRSError:
+        _LOGGER.warning("Unknown EPSG:%d; anchoring model at configured location", epsg)
+        return ref_lat, ref_lon
+
+    if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
+        _LOGGER.warning("LiDAR file centroid cannot be projected with EPSG:%d", epsg)
+        return ref_lat, ref_lon
+
+    dist_km = math.hypot(
+        (lat - ref_lat) * 111.32,
+        (lon - ref_lon) * 111.32 * math.cos(math.radians(ref_lat)),
+    )
+    if dist_km > _MAX_ANCHOR_DISTANCE_KM:
+        _LOGGER.warning(
+            "LiDAR file centre is %.0f km from your configured location "
+            "(EPSG:%d). The CRS is probably wrong - set the EPSG override. "
+            "Zones will not line up with the map until this is fixed.",
+            dist_km, epsg,
+        )
+        return ref_lat, ref_lon
+    return lat, lon
+
+
 def process_lidar_file(
     filepath: str,
     latitude: float,
@@ -279,11 +341,16 @@ def process_lidar_file(
     extent_x = (x_max - x_min) / 2
     extent_y = (y_max - y_min) / 2
 
+    # The grid is centred on the file's centroid, so anchor the model there.
+    anchor_lat, anchor_lon = _centroid_latlon(
+        center_e, center_n, native_epsg, latitude, longitude
+    )
+
     return SiteModel(
         dsm=dsm,
         resolution=resolution,
-        latitude=latitude,
-        longitude=longitude,
+        latitude=anchor_lat,
+        longitude=anchor_lon,
         dtm=dtm,
         classification=cls_grid,
         canopy_base=canopy_base,
@@ -334,11 +401,15 @@ def _process_lidar_file_simple(
     extent_x = (x_max - x_min) / 2
     extent_y = (y_max - y_min) / 2
 
+    anchor_lat, anchor_lon = _centroid_latlon(
+        (x_min + x_max) / 2, (y_min + y_max) / 2, 0, latitude, longitude
+    )
+
     return SiteModel(
         dsm=dsm,
         resolution=resolution,
-        latitude=latitude,
-        longitude=longitude,
+        latitude=anchor_lat,
+        longitude=anchor_lon,
         x_min_m=-extent_x,
         y_min_m=-extent_y,
         x_max_m=extent_x,

@@ -44,6 +44,21 @@ _LOGGER = logging.getLogger(__name__)
 # update listener must not fire a duplicate, redundant reload.
 SKIP_OPTIONS_RELOAD: set[str] = set()
 
+# ── Input validation ─────────────────────────────────────────────────────
+# Zone fields are rendered into the panel's HTML, so they are constrained here
+# as well as escaped client-side (defence in depth). The ID pattern matches
+# what the panel generates (lower-case slug, optional "_N" suffix; it can be
+# empty for names with no letters or digits).
+ZONE_ID_PATTERN = r"^[A-Za-z0-9_-]{0,128}\Z"
+ZONE_COLOR_PATTERN = r"^#[0-9A-Fa-f]{3,8}\Z"
+MAX_ZONE_NAME_LENGTH = 200
+MAX_ZONES = 100
+MAX_ZONE_VERTICES = 1000
+# The panel streams one stroke per mouse-move while dragging; it flushes at
+# 1000, so this leaves headroom while still bounding the request.
+MAX_ERASER_STROKES = 5000
+MAX_HOUR_OFFSET = 48
+
 
 @callback
 def async_register_websocket_api(hass: HomeAssistant) -> None:
@@ -63,6 +78,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_spot_windows)
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "solar_shade/get_config"}
 )
@@ -130,25 +146,33 @@ def ws_get_config(
     connection.send_result(msg["id"], result)
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "solar_shade/save_zones",
-        vol.Required("zones"): [
-            {
-                vol.Required("id"): str,
-                vol.Required("name"): str,
-                vol.Required("polygon"): [[vol.Coerce(float)]],
-                vol.Optional("color"): str,
-                vol.Optional("is_point", default=False): bool,
-                vol.Optional("surface", default="ground"): vol.In(["ground", "dsm"]),
-                vol.Optional("shade_method", default="average"): vol.In(
-                    ["average", "sunniest", "shadiest"]
-                ),
-                vol.Optional("spot_area", default=1.0): vol.All(
-                    vol.Coerce(float), vol.Range(min=0.25, max=100.0)
-                ),
-            }
-        ],
+        vol.Required("zones"): vol.All(
+            [
+                {
+                    vol.Required("id"): vol.All(str, vol.Match(ZONE_ID_PATTERN)),
+                    vol.Required("name"): vol.All(
+                        str, vol.Length(min=1, max=MAX_ZONE_NAME_LENGTH)
+                    ),
+                    vol.Required("polygon"): vol.All(
+                        [[vol.Coerce(float)]], vol.Length(max=MAX_ZONE_VERTICES)
+                    ),
+                    vol.Optional("color"): vol.All(str, vol.Match(ZONE_COLOR_PATTERN)),
+                    vol.Optional("is_point", default=False): bool,
+                    vol.Optional("surface", default="ground"): vol.In(["ground", "dsm"]),
+                    vol.Optional("shade_method", default="average"): vol.In(
+                        ["average", "sunniest", "shadiest"]
+                    ),
+                    vol.Optional("spot_area", default=1.0): vol.All(
+                        vol.Coerce(float), vol.Range(min=0.25, max=100.0)
+                    ),
+                }
+            ],
+            vol.Length(max=MAX_ZONES),
+        ),
     }
 )
 @websocket_api.async_response
@@ -206,6 +230,7 @@ async def ws_save_zones(
     connection.send_result(msg["id"], {"saved": len(zones)})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "solar_shade/update_radius",
@@ -244,6 +269,7 @@ async def ws_update_radius(
     _LOGGER.info("Download radius updated to %dm — reloading", new_radius)
     connection.send_result(msg["id"], {"radius": new_radius})
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "solar_shade/clear_cache"}
 )
@@ -493,6 +519,7 @@ def _shadow_to_rgba(shadow_map: np.ndarray) -> np.ndarray:
     return rgba
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "solar_shade/get_dsm_image"}
 )
@@ -525,10 +552,13 @@ async def ws_get_dsm_image(
     })
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "solar_shade/get_shadow_preview",
-        vol.Optional("hour_offset", default=0): vol.Coerce(float),
+        vol.Optional("hour_offset", default=0): vol.All(
+            vol.Coerce(float), vol.Range(min=-MAX_HOUR_OFFSET, max=MAX_HOUR_OFFSET)
+        ),
         vol.Optional("sun_only", default=False): bool,
     }
 )
@@ -639,10 +669,13 @@ async def ws_get_shadow_preview(
     })
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "solar_shade/get_dsm_data",
-        vol.Optional("hour_offset", default=0): vol.Coerce(float),
+        vol.Optional("hour_offset", default=0): vol.All(
+            vol.Coerce(float), vol.Range(min=-MAX_HOUR_OFFSET, max=MAX_HOUR_OFFSET)
+        ),
     }
 )
 @websocket_api.async_response
@@ -750,6 +783,7 @@ async def ws_get_dsm_data(
     connection.send_result(msg["id"], data)
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "solar_shade/get_shade_timeline"}
 )
@@ -847,6 +881,7 @@ async def ws_get_shade_timeline(
     })
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "solar_shade/get_satellite_image"}
 )
@@ -934,6 +969,7 @@ async def ws_get_satellite_image(
     })
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "solar_shade/get_surface_type_image"}
 )
@@ -1049,6 +1085,7 @@ def _pixel_rect_to_latlng(site, row: int, col: int, w: int) -> dict:
     return {"south": s_lat, "north": n_lat, "west": w_lon, "east": e_lon}
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "solar_shade/get_spot_windows"}
 )
@@ -1108,18 +1145,26 @@ async def ws_get_spot_windows(
     connection.send_result(msg["id"], {"available": True, "patches": patches})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "solar_shade/apply_eraser",
-        vol.Required("strokes"): [
-            {
-                vol.Required("lat"): vol.Coerce(float),
-                vol.Required("lng"): vol.Coerce(float),
-                vol.Required("radius_m"): vol.All(
-                    vol.Coerce(float), vol.Range(min=1, max=50)
-                ),
-            }
-        ],
+        vol.Required("strokes"): vol.All(
+            [
+                {
+                    vol.Required("lat"): vol.All(
+                        vol.Coerce(float), vol.Range(min=-90, max=90)
+                    ),
+                    vol.Required("lng"): vol.All(
+                        vol.Coerce(float), vol.Range(min=-180, max=180)
+                    ),
+                    vol.Required("radius_m"): vol.All(
+                        vol.Coerce(float), vol.Range(min=1, max=50)
+                    ),
+                }
+            ],
+            vol.Length(max=MAX_ERASER_STROKES),
+        ),
     }
 )
 @websocket_api.async_response
@@ -1195,10 +1240,10 @@ async def ws_apply_eraser(
             r_end = min(site.rows, row + radius_px + 1)
             c_end = min(site.cols, col + radius_px + 1)
 
-            stroke_mask = np.zeros(site.dsm.shape, dtype=np.bool_)
-            stroke_mask[r_start:r_end, c_start:c_end] = circle
-            new_pixels += int(stroke_mask.sum())
-            mask |= stroke_mask
+            # Update only the stroke's bounding box (a full-grid temporary
+            # per stroke made large batches needlessly expensive).
+            new_pixels += int(circle.sum())
+            mask[r_start:r_end, c_start:c_end] |= circle
 
         # Apply erasure: flatten DSM to ground at masked pixels
         site.dsm[mask] = ground[mask]
@@ -1228,6 +1273,7 @@ async def ws_apply_eraser(
     connection.send_result(msg["id"], result)
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "solar_shade/undo_eraser"}
 )
